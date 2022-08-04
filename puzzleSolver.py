@@ -29,7 +29,7 @@ def puzzle_pieces(imageName):
 
 def displayImage(image):
 
-    while False:
+    while True:
         small = cv2.resize(image, (0,0), fx=0.65, fy=0.65)
         cv2.imshow('Puzzle', small)
 
