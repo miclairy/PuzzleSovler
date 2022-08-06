@@ -1,4 +1,5 @@
 import cv2
+import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy
@@ -80,9 +81,15 @@ def cartesian2polar(x, y):
 def squared_90_degree_error_score(angle_a, angle_b):
     return abs(np.pi / 2 - abs(angle_a - angle_b)) ** 0.5
 
+def angle_between(angle_a, angle_b):
+    diff = abs(angle_a - angle_b)
+    return min(diff, 2 * math.pi - diff)
+
 def find_corner(piece):
+    num_points = len(piece)
     polar_piece = []
     polar_piece_rho = []
+    polar_piece_phi = []
 
     moment = cv2.moments(piece)
     piece_center = int(moment['m10'] / moment['m00']), int(moment['m01'] / moment['m00'])
@@ -92,54 +99,81 @@ def find_corner(piece):
         polar_point = cartesian2polar(point_around_center_x, point_around_center_y)
         polar_piece.append(polar_point)
         polar_piece_rho.append(polar_point[0])
+        polar_piece_phi.append(polar_point[1])
 
     # plt.axes(projection = 'polar')
     for point in polar_piece:
         plt.polar(point[1], point[0], 'g.')
 
-    peaks = scipy.signal.find_peaks(polar_piece_rho + polar_piece_rho, prominence=1)
+    peaks, _ = scipy.signal.find_peaks(polar_piece_rho + polar_piece_rho, prominence=1)
 
-    corner_pairs = []
-    for peak_index in peaks[0]:
-        point_rho, point_phi = polar_piece[peak_index % len(polar_piece_rho)]
-        plt.plot(point_phi, point_rho, 'rx')
-        for other_index in peaks[0]:
-            other_rho, other_phi = polar_piece[other_index % len(polar_piece_rho)]
-            # if abs(other_phi - point_phi) > np.pi / 2 - 0.3 and abs(other_phi - point_phi) < np.pi / 2 + 0.3:
-            #     # plt.plot(point_phi, point_rho, 'b.')
-            corner_pairs.append((peak_index, other_index))
+    # Peaks are pulled from the doubled signal, get all peaks with index less
+    # than num_points and add peaks which wrap around but don't repeat past the
+    # first peak in the first copy of the signal
+    min_peak = min(peaks)
+    main_peaks = [p for p in peaks if p < num_points]
+    extra_peaks = [p % num_points for p in peaks if p >= num_points and p % num_points < min_peak]
 
-    errors = []
-    for pair in corner_pairs:
-        for opposite_pair in corner_pairs:
-            pair_a_rho, pair_a_phi = polar_piece[pair[0] % len(polar_piece)]
-            pair_b_rho, pair_b_phi = polar_piece[pair[1] % len(polar_piece)]
-            opposite_a_rho, opposite_a_phi = polar_piece[opposite_pair[0] % len(polar_piece)]
-            opposite_b_rho, opposite_b_phi = polar_piece[opposite_pair[1] % len(polar_piece)]
+    deduped_peaks = extra_peaks + main_peaks
 
-            # eliminate same point used in both pairs
-            point_set = {opposite_pair[0] % len(polar_piece), opposite_pair[1] % len(polar_piece), pair[0] % len(polar_piece), pair[1] % len(polar_piece)}
-            if len(point_set) == 4:
-                error = 0
-                point_angles = [opposite_a_phi, opposite_b_phi, pair_a_phi, pair_b_phi]
-                for point in point_angles:
-                    for other in point_angles: # todo: order the phis then dont have to check all wrap around 360 degrees
-                        error += squared_90_degree_error_score(point, other)
-                errors.append([error, (pair_a_rho, pair_a_phi), (pair_b_rho, pair_b_phi), (opposite_a_rho, opposite_a_phi), (opposite_b_rho, opposite_b_phi) ])
+    # Get all subsets of 4 peaks
+    combinations = list(itertools.combinations(deduped_peaks, 4))
+
+    # Score each combination, lower is better
+    # We expect corners to be pi/2 radians from each other, square the error
+    # for successive indices and sum to score each combination
+    scores = []
+    for combination in combinations:
+        score = 0
+        for r in range(4):
+            phi_a = polar_piece_phi[combination[r]]
+            phi_b = polar_piece_phi[combination[(r + 1) % 4]]
+            diff = angle_between(phi_a, phi_b)
+            score += ((math.pi / 2) - diff) ** 2
+        scores.append(score)
+
+    # Lowest score has phis distributed closest to pi/2 radians
+    best_combination_idx = scores.index(min(scores))
+    best_combination = combinations[best_combination_idx]
+
+    for point_idx in best_combination:
+        p = polar_piece[point_idx]
+        plt.plot(p[1], p[0], 'bo', markersize=7)
+
+    # corner_pairs = []
+    # for peak_index in peaks:
+    #     point_rho, point_phi = polar_piece[peak_index % len(polar_piece_rho)]
+    #     plt.plot(point_phi, point_rho, 'rx')
+    #     for other_index in peaks:
+    #         other_rho, other_phi = polar_piece[other_index % len(polar_piece_rho)]
+    #         # if abs(other_phi - point_phi) > np.pi / 2 - 0.3 and abs(other_phi - point_phi) < np.pi / 2 + 0.3:
+    #         #     # plt.plot(point_phi, point_rho, 'b.')
+    #         corner_pairs.append((peak_index, other_index))
+
+    # errors = []
+    # for pair in corner_pairs:
+    #     for opposite_pair in corner_pairs:
+    #         pair_a_rho, pair_a_phi = polar_piece[pair[0] % len(polar_piece)]
+    #         pair_b_rho, pair_b_phi = polar_piece[pair[1] % len(polar_piece)]
+    #         opposite_a_rho, opposite_a_phi = polar_piece[opposite_pair[0] % len(polar_piece)]
+    #         opposite_b_rho, opposite_b_phi = polar_piece[opposite_pair[1] % len(polar_piece)]
+
+    #         # eliminate same point used in both pairs
+    #         point_set = {opposite_pair[0] % len(polar_piece), opposite_pair[1] % len(polar_piece), pair[0] % len(polar_piece), pair[1] % len(polar_piece)}
+    #         if len(point_set) == 4:
+    #             error = 0
+    #             point_angles = [opposite_a_phi, opposite_b_phi, pair_a_phi, pair_b_phi]
+    #             for point in point_angles:
+    #                 for other in point_angles: # todo: order the phis then dont have to check all wrap around 360 degrees
+    #                     error += squared_90_degree_error_score(point, other)
+    #             errors.append([error, (pair_a_rho, pair_a_phi), (pair_b_rho, pair_b_phi), (opposite_a_rho, opposite_a_phi), (opposite_b_rho, opposite_b_phi) ])
     
-    sorted_errors = sorted(errors, key=lambda x : x[0])
+    # sorted_errors = sorted(errors, key=lambda x : x[0])
                 
-    print(sorted_errors[0])
+    # print(sorted_errors[0])
     
-    for point in sorted_errors[0][1:]:
-        plt.plot(point[1], point[0], 'b.')
-        
-
-
-        # 8 heads / 2 square smallest area is the corners
-        # sum of squared errors
-
-
+    # for point in sorted_errors[0][1:]:
+    #     plt.plot(point[1], point[0], 'b.')
 
     plt.show()
 
