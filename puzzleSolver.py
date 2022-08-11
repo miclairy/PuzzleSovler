@@ -4,12 +4,13 @@ import random
 import sovler
 
 def show_piece(piece, corners):
+
     for point_idx in corners:
-        point = piece[point_idx][0]
+        point = piece[point_idx]
         plt.plot(point[0], point[1], 'bo', markersize=7)
 
     for point in piece:
-        plt.plot(point[0][0], point[0][1], 'g.')
+        plt.plot(point[0], point[1], 'g.')
 
     plt.axis('equal')
     plt.show()
