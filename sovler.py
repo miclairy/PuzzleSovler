@@ -66,16 +66,8 @@ def find_corners(piece):
 
     # Find peaks in doubled signal to get potential start/end peaks
     peaks, _ = scipy.signal.find_peaks(polar_piece_rho + polar_piece_rho, prominence=1)
-
-    # Peaks are pulled from the doubled signal, get all peaks with index less
-    # than num_points and add peaks which wrap around but don't repeat past the
-    # first peak in the first copy of the signal
-    num_points = len(piece)
-    min_peak = min(peaks)
-    main_peaks = [p for p in peaks if p < num_points]
-    extra_peaks = [p % num_points for p in peaks if p >= num_points and p % num_points < min_peak]
-
-    deduped_peaks = extra_peaks + main_peaks
+    deduped_peaks = list({p % len(piece) for p in peaks})
+    deduped_peaks.sort()
 
     if len(deduped_peaks) < 4:
         return ()
